@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -87,6 +86,7 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: React.Re
   </button>
 );
 
+// Fixed destructuring syntax: replaced semicolons with commas in the props parameter
 const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = "" }) => (
   <div className={`bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm ${className}`}>
     <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">{title}</h3>
@@ -225,7 +225,7 @@ export default function App() {
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
 
-    // Nova página para Empréstimos e Veículos se necessário
+    // Seção 3: Empréstimos
     if (currentY > 200) {
       doc.addPage();
       currentY = 20;
@@ -253,7 +253,7 @@ export default function App() {
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
 
-    // Veículos
+    // Seção 4: Veículos
     if (currentY > 200) {
       doc.addPage();
       currentY = 20;
@@ -277,6 +277,45 @@ export default function App() {
       body: vehicleBody,
       theme: 'grid',
       headStyles: { fillColor: [239, 68, 68] } // Red 500
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 15;
+
+    // Seção 5: Viagens (NOVO CAMPO DETALHADO)
+    if (currentY > 180) { // Menor margem pois a tabela de viagens costuma ser larga
+      doc.addPage();
+      currentY = 20;
+    }
+
+    doc.setFontSize(16);
+    doc.text('5. Detalhamento de Viagens', 15, currentY);
+    currentY += 10;
+
+    const tripsBody = data.trips.map(t => {
+      const totalTrip = t.carRental + t.fuel + t.food + t.others + t.creditCard + t.pix;
+      return [
+        t.destination,
+        t.month,
+        formatCurrency(t.carRental),
+        formatCurrency(t.fuel),
+        formatCurrency(t.food),
+        formatCurrency(t.others),
+        formatCurrency(t.creditCard),
+        formatCurrency(t.pix),
+        formatCurrency(totalTrip)
+      ];
+    });
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Destino', 'Mês', 'Aluguel', 'Combust.', 'Aliment.', 'Outros', 'Cartão', 'Pix', 'Total']],
+      body: tripsBody,
+      theme: 'striped',
+      headStyles: { fillColor: [59, 130, 246] }, // Blue 500
+      styles: { fontSize: 7, cellPadding: 2 }, // Fonte menor para caber todas as colunas de gastos
+      columnStyles: {
+        8: { fontStyle: 'bold' } // Coluna Total em Negrito
+      }
     });
 
     // Rodapé em todas as páginas
