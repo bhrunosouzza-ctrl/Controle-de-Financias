@@ -86,7 +86,6 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: React.Re
   </button>
 );
 
-// Fixed destructuring syntax: replaced semicolons with commas in the props parameter
 const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = "" }) => (
   <div className={`bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm ${className}`}>
     <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">{title}</h3>
@@ -281,8 +280,8 @@ export default function App() {
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
 
-    // Seção 5: Viagens (NOVO CAMPO DETALHADO)
-    if (currentY > 180) { // Menor margem pois a tabela de viagens costuma ser larga
+    // Seção 5: Viagens
+    if (currentY > 180) { 
       doc.addPage();
       currentY = 20;
     }
@@ -311,10 +310,10 @@ export default function App() {
       head: [['Destino', 'Mês', 'Aluguel', 'Combust.', 'Aliment.', 'Outros', 'Cartão', 'Pix', 'Total']],
       body: tripsBody,
       theme: 'striped',
-      headStyles: { fillColor: [59, 130, 246] }, // Blue 500
-      styles: { fontSize: 7, cellPadding: 2 }, // Fonte menor para caber todas as colunas de gastos
+      headStyles: { fillColor: [59, 130, 246] }, 
+      styles: { fontSize: 7, cellPadding: 2 }, 
       columnStyles: {
-        8: { fontStyle: 'bold' } // Coluna Total em Negrito
+        8: { fontStyle: 'bold' } 
       }
     });
 
@@ -445,13 +444,12 @@ export default function App() {
   const chartData = useMemo(() => {
     return data.months.map((m) => {
       const expenses = calculateTotalExpenses(m.expenses);
-      const nextSal = getNextMonthSalary(m.month, data.months);
       const incomeTotal = calculateTotalIncome(m.income);
       return {
         name: m.month,
         gastos: expenses,
         ganhos: incomeTotal,
-        balancoProx: nextSal - expenses
+        balanco: incomeTotal - expenses
       };
     });
   }, [data.months]);
@@ -660,7 +658,7 @@ export default function App() {
                       <th className="px-4 py-3">Mês</th>
                       <th className="px-4 py-3">Gastos Totais</th>
                       <th className="px-4 py-3">Ganhos Totais</th>
-                      <th className="px-4 py-3">Balanço (Próx. Sal)</th>
+                      <th className="px-4 py-3">Balanço Mensal</th>
                       <th className="px-4 py-3 text-right">Ação</th>
                     </tr>
                   </thead>
@@ -668,16 +666,15 @@ export default function App() {
                     {data.months.map((m) => {
                       const totalExp = calculateTotalExpenses(m.expenses);
                       const totalInc = calculateTotalIncome(m.income);
-                      const nextSal = getNextMonthSalary(m.month, data.months);
-                      const balanceProx = nextSal - totalExp;
+                      const balance = totalInc - totalExp;
                       
                       return (
                         <tr key={m.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors group" onClick={() => setSelectedMonthId(m.id)}>
                           <td className="px-4 py-4 font-semibold dark:text-white">{m.month}</td>
                           <td className="px-4 py-4 text-red-500 font-medium">{formatCurrency(totalExp)}</td>
                           <td className="px-4 py-4 text-emerald-500 font-medium">{formatCurrency(totalInc)}</td>
-                          <td className={`px-4 py-4 font-bold ${balanceProx >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                            {nextSal > 0 ? formatCurrency(balanceProx) : <span className="text-slate-400 text-xs font-normal">Falta Sal. {MONTHS_BR[(MONTHS_BR.indexOf(m.month)+1)%12]}</span>}
+                          <td className={`px-4 py-4 font-bold ${balance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                            {formatCurrency(balance)}
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex items-center justify-end">
