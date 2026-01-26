@@ -25,7 +25,8 @@ import {
   Tag,
   TrendingUp,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Bike
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -43,7 +44,6 @@ import {
   Loan, 
   TripExpense, 
   VehicleExpense, 
-  SavingsTransaction, 
   AppState, 
   VehicleType,
   VehicleCategory,
@@ -463,22 +463,53 @@ export default function App() {
         <div className="space-y-6">
           {activeTab === 'dashboard' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <Card title="Patrimônio Poupança">
-                    <p className="text-3xl font-black text-emerald-500">{formatCurrency(stats.savings.total)}</p>
-                    <p className="text-xs text-slate-400 mt-1">Acumulado total</p>
+                    <p className="text-2xl font-black text-emerald-500">{formatCurrency(stats.savings.total)}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tight">Acumulado total</p>
                  </Card>
                  <Card title="Saldo Devedor">
-                    <p className="text-3xl font-black text-amber-500">{formatCurrency(stats.loans.remaining)}</p>
-                    <p className="text-xs text-slate-400 mt-1">Empréstimos pendentes</p>
+                    <p className="text-2xl font-black text-amber-500">{formatCurrency(stats.loans.remaining)}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tight">Empréstimos ativos</p>
                  </Card>
-                 <Card title="Gastos Variáveis">
-                    <p className="text-3xl font-black text-purple-500">{formatCurrency(stats.catExpenses)}</p>
-                    <p className="text-xs text-slate-400 mt-1">Soma das categorias</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                 <Card title="Combustível Carro">
+                    <div className="flex items-center gap-2 mb-1">
+                       <div className="p-1.5 bg-primary-100 dark:bg-primary-900/30 rounded-lg">
+                          <Fuel className="w-4 h-4 text-primary-500" />
+                       </div>
+                       <p className="text-xl font-black text-primary-600 dark:text-primary-400">{formatCurrency(stats.vehicle.car.fuel)}</p>
+                    </div>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold flex items-center gap-1"><Car className="w-3 h-3"/> Gasto com Carro</p>
                  </Card>
-                 <Card title="Custo Veicular">
-                    <p className="text-3xl font-black text-red-500">{formatCurrency(stats.vehicle.car.fuel + stats.vehicle.car.maintenance + stats.vehicle.moto.fuel + stats.vehicle.moto.maintenance)}</p>
-                    <p className="text-xs text-slate-400 mt-1">Carro + Moto</p>
+                 <Card title="Manutenção Carro">
+                    <div className="flex items-center gap-2 mb-1">
+                       <div className="p-1.5 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+                          <Wrench className="w-4 h-4 text-amber-500" />
+                       </div>
+                       <p className="text-xl font-black text-amber-600 dark:text-amber-400">{formatCurrency(stats.vehicle.car.maintenance)}</p>
+                    </div>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold flex items-center gap-1"><Car className="w-3 h-3"/> Reparos Carro</p>
+                 </Card>
+                 <Card title="Combustível Moto">
+                    <div className="flex items-center gap-2 mb-1">
+                       <div className="p-1.5 bg-sky-100 dark:bg-sky-900/30 rounded-lg">
+                          <Fuel className="w-4 h-4 text-sky-500" />
+                       </div>
+                       <p className="text-xl font-black text-sky-600 dark:text-sky-400">{formatCurrency(stats.vehicle.moto.fuel)}</p>
+                    </div>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold flex items-center gap-1"><Bike className="w-3 h-3"/> Gasto com Moto</p>
+                 </Card>
+                 <Card title="Manutenção Moto">
+                    <div className="flex items-center gap-2 mb-1">
+                       <div className="p-1.5 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+                          <Wrench className="w-4 h-4 text-orange-500" />
+                       </div>
+                       <p className="text-xl font-black text-orange-600 dark:text-orange-400">{formatCurrency(stats.vehicle.moto.maintenance)}</p>
+                    </div>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold flex items-center gap-1"><Bike className="w-3 h-3"/> Reparos Moto</p>
                  </Card>
               </div>
 
