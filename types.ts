@@ -73,10 +73,19 @@ export interface SavingsTransaction {
   description: string;
 }
 
+export interface CategorizedExpense {
+  id: string;
+  category: string;
+  value: number;
+  month: string;
+  description: string;
+}
+
 export interface AppState {
   months: MonthData[];
   loans: Loan[];
   trips: TripExpense[];
   vehicleExpenses: VehicleExpense[];
   savings: SavingsTransaction[];
+  categorizedExpenses: CategorizedExpense[];
 }

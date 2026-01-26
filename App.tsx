@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -21,6 +22,7 @@ import {
   Fuel,
   Wrench,
   FileText,
+  Tag,
   TrendingUp,
   ArrowUpRight,
   ArrowDownRight
@@ -33,7 +35,8 @@ import {
   CartesianGrid, 
   Tooltip, 
   Legend, 
-  ResponsiveContainer
+  ResponsiveContainer,
+  Cell
 } from 'recharts';
 import { 
   MonthData, 
@@ -43,7 +46,8 @@ import {
   SavingsTransaction, 
   AppState, 
   VehicleType,
-  VehicleCategory
+  VehicleCategory,
+  CategorizedExpense
 } from './types';
 import { 
   formatCurrency, 
@@ -52,6 +56,30 @@ import {
   calculateTotalIncome,
   getNextMonthSalary
 } from './utils';
+
+const CATEGORIES = [
+  'Alimentação',
+  'Saúde',
+  'Lazer',
+  'Educação',
+  'Transporte',
+  'Vestuário',
+  'Presentes',
+  'Assinaturas',
+  'Outros'
+];
+
+const CATEGORY_COLORS: Record<string, string> = {
+  'Alimentação': '#fb923c',
+  'Saúde': '#f87171',
+  'Lazer': '#c084fc',
+  'Educação': '#60a5fa',
+  'Transporte': '#4ade80',
+  'Vestuário': '#f472b6',
+  'Presentes': '#fbbf24',
+  'Assinaturas': '#2dd4bf',
+  'Outros': '#94a3b8'
+};
 
 const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
@@ -94,7 +122,7 @@ const Card: React.FC<{ title: string; children: React.ReactNode; className?: str
 );
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'monthly' | 'loans' | 'travel' | 'vehicle' | 'savings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'monthly' | 'categories' | 'loans' | 'travel' | 'vehicle' | 'savings'>('dashboard');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [selectedMonthId, setSelectedMonthId] = useState<string | null>(null);
   
@@ -103,7 +131,8 @@ export default function App() {
     loans: [],
     trips: [],
     vehicleExpenses: [],
-    savings: []
+    savings: [],
+    categorizedExpenses: []
   });
 
   const selectedMonth = useMemo(() => 
@@ -112,23 +141,17 @@ export default function App() {
   );
 
   useEffect(() => {
-    const saved = localStorage.getItem('finance_app_data_v10');
+    const saved = localStorage.getItem('finance_app_data_v11');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.months) {
-          parsed.months = parsed.months.map((m: any) => ({
-            ...m,
-            id: m.id || Math.random().toString(36).substr(2, 9)
-          }));
-        }
         setData(parsed);
       } catch (e) { console.error("Erro ao carregar dados:", e); }
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('finance_app_data_v10', JSON.stringify(data));
+    localStorage.setItem('finance_app_data_v11', JSON.stringify(data));
   }, [data]);
 
   useEffect(() => {
@@ -161,8 +184,9 @@ export default function App() {
     };
 
     const travel = data.trips.reduce((acc, t) => acc + t.carRental + t.fuel + t.food + t.others + t.creditCard + t.pix, 0);
+    const catExpenses = data.categorizedExpenses.reduce((acc, c) => acc + c.value, 0);
 
-    return { vehicle, loans, savings, travel };
+    return { vehicle, loans, savings, travel, catExpenses };
   }, [data]);
 
   const exportToPDF = () => {
@@ -170,7 +194,7 @@ export default function App() {
     const pageWidth = doc.internal.pageSize.getWidth();
     
     // Header
-    doc.setFillColor(14, 165, 233); // Primary 500
+    doc.setFillColor(14, 165, 233); 
     doc.rect(0, 0, pageWidth, 40, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
@@ -193,6 +217,7 @@ export default function App() {
       body: [
         ['Patrimônio na Poupança', formatCurrency(stats.savings.total)],
         ['Saldo Devedor de Empréstimos', formatCurrency(stats.loans.remaining)],
+        ['Gastos Variáveis por Categoria', formatCurrency(stats.catExpenses)],
         ['Investimento em Viagens', formatCurrency(stats.travel)],
         ['Gastos Totais com Veículos', formatCurrency(stats.vehicle.car.fuel + stats.vehicle.car.maintenance + stats.vehicle.moto.fuel + stats.vehicle.moto.maintenance)],
       ],
@@ -207,16 +232,22 @@ export default function App() {
     doc.text('2. Controle Mensal Detalhado', 15, currentY);
     currentY += 10;
 
-    const monthlyBody = data.months.map(m => [
-      m.month,
-      formatCurrency(calculateTotalExpenses(m.expenses)),
-      formatCurrency(calculateTotalIncome(m.income)),
-      formatCurrency(calculateTotalIncome(m.income) - calculateTotalExpenses(m.expenses))
-    ]);
+    const monthlyBody = data.months.map(m => {
+      const fixedExp = calculateTotalExpenses(m.expenses);
+      const catExp = data.categorizedExpenses.filter(c => c.month === m.month).reduce((acc, curr) => acc + curr.value, 0);
+      const totalExp = fixedExp + catExp;
+      const totalInc = calculateTotalIncome(m.income);
+      return [
+        m.month,
+        formatCurrency(totalExp),
+        formatCurrency(totalInc),
+        formatCurrency(totalInc - totalExp)
+      ];
+    });
 
     autoTable(doc, {
       startY: currentY,
-      head: [['Mês', 'Despesas', 'Receitas', 'Balanço']],
+      head: [['Mês', 'Total Despesas', 'Total Receitas', 'Balanço']],
       body: monthlyBody,
       theme: 'grid',
       headStyles: { fillColor: [14, 165, 233] }
@@ -224,98 +255,28 @@ export default function App() {
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
 
-    // Seção 3: Empréstimos
-    if (currentY > 200) {
-      doc.addPage();
-      currentY = 20;
-    }
-
+    // Seção 3: Gastos por Categoria
+    if (currentY > 200) { doc.addPage(); currentY = 20; }
     doc.setFontSize(16);
-    doc.text('3. Empréstimos e Financiamentos', 15, currentY);
+    doc.text('3. Gastos por Categoria', 15, currentY);
     currentY += 10;
 
-    const loansBody = data.loans.map(l => [
-      l.description,
-      formatCurrency(l.totalValue),
-      `${l.paidInstallments}/${l.installments}`,
-      formatCurrency(l.installmentValue),
-      formatCurrency((l.installments - l.paidInstallments) * l.installmentValue)
+    const catBody = data.categorizedExpenses.map(c => [
+      c.category,
+      c.month,
+      c.description,
+      formatCurrency(c.value)
     ]);
 
     autoTable(doc, {
       startY: currentY,
-      head: [['Descrição', 'Valor Total', 'Parcelas', 'Vl. Parcela', 'Saldo Restante']],
-      body: loansBody,
+      head: [['Categoria', 'Mês', 'Descrição', 'Valor']],
+      body: catBody,
       theme: 'striped',
-      headStyles: { fillColor: [245, 158, 11] } // Amber 500
+      headStyles: { fillColor: [168, 85, 247] } // Purple 500
     });
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
-
-    // Seção 4: Veículos
-    if (currentY > 200) {
-      doc.addPage();
-      currentY = 20;
-    }
-
-    doc.setFontSize(16);
-    doc.text('4. Despesas com Veículos', 15, currentY);
-    currentY += 10;
-
-    const vehicleBody = data.vehicleExpenses.map(v => [
-      v.type,
-      v.category,
-      v.month,
-      v.description,
-      formatCurrency(v.value)
-    ]);
-
-    autoTable(doc, {
-      startY: currentY,
-      head: [['Veículo', 'Categoria', 'Mês', 'Descrição', 'Valor']],
-      body: vehicleBody,
-      theme: 'grid',
-      headStyles: { fillColor: [239, 68, 68] } // Red 500
-    });
-
-    currentY = (doc as any).lastAutoTable.finalY + 15;
-
-    // Seção 5: Viagens
-    if (currentY > 180) { 
-      doc.addPage();
-      currentY = 20;
-    }
-
-    doc.setFontSize(16);
-    doc.text('5. Detalhamento de Viagens', 15, currentY);
-    currentY += 10;
-
-    const tripsBody = data.trips.map(t => {
-      const totalTrip = t.carRental + t.fuel + t.food + t.others + t.creditCard + t.pix;
-      return [
-        t.destination,
-        t.month,
-        formatCurrency(t.carRental),
-        formatCurrency(t.fuel),
-        formatCurrency(t.food),
-        formatCurrency(t.others),
-        formatCurrency(t.creditCard),
-        formatCurrency(t.pix),
-        formatCurrency(totalTrip)
-      ];
-    });
-
-    autoTable(doc, {
-      startY: currentY,
-      head: [['Destino', 'Mês', 'Aluguel', 'Combust.', 'Aliment.', 'Outros', 'Cartão', 'Pix', 'Total']],
-      body: tripsBody,
-      theme: 'striped',
-      headStyles: { fillColor: [59, 130, 246] }, 
-      styles: { fontSize: 7, cellPadding: 2 }, 
-      columnStyles: {
-        8: { fontStyle: 'bold' } 
-      }
-    });
 
     // Rodapé em todas as páginas
     const totalPages = (doc as any).internal.getNumberOfPages();
@@ -365,9 +326,7 @@ export default function App() {
 
         setData(prev => ({ ...prev, months: [...prev.months, ...importedMonths] }));
         alert(`${importedMonths.length} registros importados!`);
-      } catch (err) {
-        alert("Erro ao ler Excel.");
-      }
+      } catch (err) { alert("Erro ao ler Excel."); }
     };
     reader.readAsBinaryString(file);
   };
@@ -378,9 +337,12 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        setData(JSON.parse(evt.target?.result as string));
-        alert("Backup restaurado!");
-      } catch (err) { alert("Erro no arquivo JSON."); }
+        const importedData = JSON.parse(evt.target?.result as string);
+        setData(importedData);
+        alert("Backup restaurado com sucesso!");
+      } catch (err) { 
+        alert("Erro no arquivo JSON. Verifique se o formato é válido."); 
+      }
     };
     reader.readAsText(file);
   };
@@ -401,58 +363,42 @@ export default function App() {
     setSelectedMonthId(newMonth.id);
   };
 
-  const updateMonthField = (id: string, category: 'expenses' | 'income', field: string, value: string) => {
-    const num = value === "" ? 0 : parseFloat(value);
+  const addCategorizedExpense = () => {
+    const currentMonth = data.months[data.months.length - 1]?.month || MONTHS_BR[new Date().getMonth()];
     setData(prev => ({
       ...prev,
-      months: prev.months.map(m => m.id === id ? {
-        ...m,
-        [category]: { ...m[category], [field]: isNaN(num) ? 0 : num }
-      } : m)
-    }));
-  };
-
-  const addVehicleExpense = (type: VehicleType) => {
-    const currentMonth = data.months[data.months.length - 1]?.month || MONTHS_BR[new Date().getMonth()];
-    setData(prev => ({ 
-      ...prev, 
-      vehicleExpenses: [...prev.vehicleExpenses, {
+      categorizedExpenses: [...prev.categorizedExpenses, {
         id: Math.random().toString(36).substr(2, 9),
-        type,
-        category: VehicleCategory.FUEL,
-        description: "Novo lançamento",
+        category: CATEGORIES[0],
         value: 0,
-        month: currentMonth
-      }] 
-    }));
-  };
-
-  const addSavingsTransaction = (type: 'entrada' | 'retirada' | 'rendimento') => {
-    const currentMonth = data.months[data.months.length - 1]?.month || MONTHS_BR[new Date().getMonth()];
-    setData(prev => ({ 
-      ...prev, 
-      savings: [...prev.savings, {
-        id: Math.random().toString(36).substr(2, 9),
-        type,
-        value: 0,
-        description: type.charAt(0).toUpperCase() + type.slice(1),
-        month: currentMonth
-      }] 
+        month: currentMonth,
+        description: "Novo gasto"
+      }]
     }));
   };
 
   const chartData = useMemo(() => {
     return data.months.map((m) => {
-      const expenses = calculateTotalExpenses(m.expenses);
+      const fixedExpenses = calculateTotalExpenses(m.expenses);
+      const categorizedExp = data.categorizedExpenses.filter(c => c.month === m.month).reduce((acc, curr) => acc + curr.value, 0);
+      const totalExp = fixedExpenses + categorizedExp;
       const incomeTotal = calculateTotalIncome(m.income);
       return {
         name: m.month,
-        gastos: expenses,
+        gastos: totalExp,
         ganhos: incomeTotal,
-        balanco: incomeTotal - expenses
+        balanco: incomeTotal - totalExp
       };
     });
-  }, [data.months]);
+  }, [data.months, data.categorizedExpenses]);
+
+  const categoryChartData = useMemo(() => {
+    const totals: Record<string, number> = {};
+    data.categorizedExpenses.forEach(c => {
+      totals[c.category] = (totals[c.category] || 0) + c.value;
+    });
+    return Object.keys(totals).map(cat => ({ name: cat, value: totals[cat] }));
+  }, [data.categorizedExpenses]);
 
   return (
     <div className="min-h-screen transition-colors duration-200 dark:bg-slate-900 bg-slate-50 flex flex-col">
@@ -471,7 +417,7 @@ export default function App() {
             </button>
             <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
             
-            <button onClick={exportToPDF} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 cursor-pointer" title="Exportar Relatório PDF">
+            <button onClick={exportToPDF} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 cursor-pointer" title="Gerar Relatório PDF">
               <FileText className="w-5 h-5 text-red-500" />
             </button>
 
@@ -479,19 +425,24 @@ export default function App() {
               <FileSpreadsheet className="w-5 h-5" />
               <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleExcelImport} />
             </label>
+
             <label className="cursor-pointer p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400" title="Restaurar Backup JSON">
               <Upload className="w-5 h-5" />
               <input type="file" className="hidden" accept=".json" onChange={handleJSONImport} />
             </label>
+
             <button onClick={() => {
-              const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+              const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
-              a.href = url; a.download = 'finance_data_backup.json'; a.click();
-            }} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 cursor-pointer" title="Exportar Backup">
+              a.href = url;
+              a.download = `finance_backup_${new Date().toISOString().split('T')[0]}.json`;
+              a.click();
+            }} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 cursor-pointer" title="Exportar Backup JSON">
               <Download className="w-5 h-5" />
             </button>
-            <button onClick={() => window.confirm("CUIDADO: Isso apagará TODOS os dados do sistema. Continuar?") && setData({ months: [], loans: [], trips: [], vehicleExpenses: [], savings: [] })} className="p-2 rounded-lg hover:bg-red-50 text-red-600 cursor-pointer" title="Zerar Sistema">
+
+            <button onClick={() => window.confirm("ATENÇÃO: Isso apagará TODOS os dados cadastrados. Deseja prosseguir?") && setData({ months: [], loans: [], trips: [], vehicleExpenses: [], savings: [], categorizedExpenses: [] })} className="p-2 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 cursor-pointer" title="Limpar Tudo">
               <Trash2 className="w-5 h-5" />
             </button>
           </div>
@@ -501,7 +452,8 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 pb-24">
         <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 custom-scrollbar border-b dark:border-slate-800">
           <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard className="w-5 h-5" />} label="Painel" />
-          <TabButton active={activeTab === 'monthly'} onClick={() => setActiveTab('monthly')} icon={<TableIcon className="w-5 h-5" />} label="Mensal" />
+          <TabButton active={activeTab === 'monthly'} onClick={() => setActiveTab('monthly')} icon={<TableIcon className="w-5 h-5" />} label="Fixos" />
+          <TabButton active={activeTab === 'categories'} onClick={() => setActiveTab('categories')} icon={<Tag className="w-5 h-5" />} label="Categorias" />
           <TabButton active={activeTab === 'loans'} onClick={() => setActiveTab('loans')} icon={<CreditCard className="w-5 h-5" />} label="Empréstimos" />
           <TabButton active={activeTab === 'travel'} onClick={() => setActiveTab('travel')} icon={<Plane className="w-5 h-5" />} label="Viagens" />
           <TabButton active={activeTab === 'vehicle'} onClick={() => setActiveTab('vehicle')} icon={<Car className="w-5 h-5" />} label="Veículos" />
@@ -510,137 +462,137 @@ export default function App() {
 
         <div className="space-y-6">
           {activeTab === 'dashboard' && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                 <Card title="Saúde da Poupança">
-                    <div className="flex flex-col h-full justify-between">
-                      <div className="mb-4">
-                        <p className="text-3xl font-black text-emerald-500">{formatCurrency(stats.savings.total)}</p>
-                        <p className="text-xs text-slate-400 font-medium">Patrimônio Acumulado</p>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-500">Rendimentos:</span>
-                          <span className="text-emerald-500 font-bold">+{formatCurrency(stats.savings.earnings)}</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                           <div className="h-full bg-emerald-500" style={{ width: '100%' }}></div>
-                        </div>
-                      </div>
-                    </div>
+                 <Card title="Patrimônio Poupança">
+                    <p className="text-3xl font-black text-emerald-500">{formatCurrency(stats.savings.total)}</p>
+                    <p className="text-xs text-slate-400 mt-1">Acumulado total</p>
                  </Card>
-
-                 <Card title="Amortização de Empréstimos">
-                    <div className="flex flex-col h-full justify-between">
-                      <div className="mb-4">
-                        <p className="text-3xl font-black text-amber-500">{formatCurrency(stats.loans.remaining)}</p>
-                        <p className="text-xs text-slate-400 font-medium">Saldo Devedor Restante</p>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-500">Total Pago:</span>
-                          <span className="text-slate-600 dark:text-slate-300 font-bold">{formatCurrency(stats.loans.paid)}</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                           {stats.loans.paid + stats.loans.remaining > 0 && (
-                             <div 
-                               className="h-full bg-amber-500" 
-                               style={{ width: `${(stats.loans.paid / (stats.loans.paid + stats.loans.remaining)) * 100}%` }}
-                             ></div>
-                           )}
-                        </div>
-                        <p className="text-[10px] text-right text-slate-400 font-bold">
-                          {stats.loans.paid + stats.loans.remaining > 0 ? `${Math.round((stats.loans.paid / (stats.loans.paid + stats.loans.remaining)) * 100)}% quitado` : 'Sem dívidas'}
-                        </p>
-                      </div>
-                    </div>
+                 <Card title="Saldo Devedor">
+                    <p className="text-3xl font-black text-amber-500">{formatCurrency(stats.loans.remaining)}</p>
+                    <p className="text-xs text-slate-400 mt-1">Empréstimos pendentes</p>
                  </Card>
-
-                 <Card title="Investimento em Viagens">
-                    <div className="flex flex-col h-full justify-center">
-                       <div className="flex items-center gap-4">
-                         <div className="p-3 bg-primary-500/10 text-primary-500 rounded-2xl">
-                           <Plane className="w-8 h-8" />
-                         </div>
-                         <div>
-                           <p className="text-2xl font-black dark:text-white">{formatCurrency(stats.travel)}</p>
-                           <p className="text-xs text-slate-400 font-medium">Total gasto com lazer</p>
-                         </div>
-                       </div>
-                    </div>
+                 <Card title="Gastos Variáveis">
+                    <p className="text-3xl font-black text-purple-500">{formatCurrency(stats.catExpenses)}</p>
+                    <p className="text-xs text-slate-400 mt-1">Soma das categorias</p>
                  </Card>
-
-                 <Card title="Manutenção de Veículos">
-                    <div className="flex flex-col h-full justify-center">
-                       <div className="flex items-center gap-4">
-                         <div className="p-3 bg-red-500/10 text-red-500 rounded-2xl">
-                           <Wrench className="w-8 h-8" />
-                         </div>
-                         <div>
-                           <p className="text-2xl font-black dark:text-white">{formatCurrency(stats.vehicle.car.maintenance + stats.vehicle.moto.maintenance)}</p>
-                           <p className="text-xs text-slate-400 font-medium">Soma Carro + Moto</p>
-                         </div>
-                       </div>
-                    </div>
+                 <Card title="Custo Veicular">
+                    <p className="text-3xl font-black text-red-500">{formatCurrency(stats.vehicle.car.fuel + stats.vehicle.car.maintenance + stats.vehicle.moto.fuel + stats.vehicle.moto.maintenance)}</p>
+                    <p className="text-xs text-slate-400 mt-1">Carro + Moto</p>
                  </Card>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card title="Detalhamento Veicular: Carro">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border dark:border-slate-700">
-                      <div className="flex items-center gap-2 text-primary-500 mb-2">
-                        <Fuel className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase tracking-widest">Combustível</span>
-                      </div>
-                      <p className="text-xl font-black dark:text-white">{formatCurrency(stats.vehicle.car.fuel)}</p>
-                    </div>
-                    <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border dark:border-slate-700">
-                      <div className="flex items-center gap-2 text-amber-500 mb-2">
-                        <Wrench className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase tracking-widest">Manutenção</span>
-                      </div>
-                      <p className="text-xl font-black dark:text-white">{formatCurrency(stats.vehicle.car.maintenance)}</p>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card title="Detalhamento Veicular: Moto">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border dark:border-slate-700">
-                      <div className="flex items-center gap-2 text-primary-500 mb-2">
-                        <Fuel className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase tracking-widest">Combustível</span>
-                      </div>
-                      <p className="text-xl font-black dark:text-white">{formatCurrency(stats.vehicle.moto.fuel)}</p>
-                    </div>
-                    <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border dark:border-slate-700">
-                      <div className="flex items-center gap-2 text-amber-500 mb-2">
-                        <Wrench className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase tracking-widest">Manutenção</span>
-                      </div>
-                      <p className="text-xl font-black dark:text-white">{formatCurrency(stats.vehicle.moto.maintenance)}</p>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              <Card title="Resumo Financeiro Mensal" className="h-[400px]">
-                {data.months.length === 0 ? <div className="h-full flex items-center justify-center text-slate-400 italic">Sem dados registrados.</div> : (
+                <Card title="Evolução Financeira Mensal" className="h-[400px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
                       <XAxis dataKey="name" stroke={isDarkMode ? '#94a3b8' : '#64748b'} />
                       <YAxis stroke={isDarkMode ? '#94a3b8' : '#64748b'} />
-                      <Tooltip contentStyle={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                      <Tooltip contentStyle={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: 'none' }} />
                       <Legend />
-                      <Bar dataKey="gastos" fill="#f43f5e" name="Gastos do Mês" radius={[6,6,0,0]} />
-                      <Bar dataKey="ganhos" fill="#10b981" name="Ganhos do Mês" radius={[6,6,0,0]} />
+                      <Bar dataKey="gastos" fill="#f43f5e" name="Total Gastos" radius={[6,6,0,0]} />
+                      <Bar dataKey="ganhos" fill="#10b981" name="Total Ganhos" radius={[6,6,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
-                )}
-              </Card>
+                </Card>
+
+                <Card title="Distribuição por Categoria" className="h-[400px]">
+                  {categoryChartData.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-slate-400 italic">Nenhum gasto categorizado.</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={categoryChartData} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
+                        <XAxis type="number" stroke={isDarkMode ? '#94a3b8' : '#64748b'} />
+                        <YAxis dataKey="name" type="category" width={100} stroke={isDarkMode ? '#94a3b8' : '#64748b'} />
+                        <Tooltip contentStyle={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: 'none' }} />
+                        <Bar dataKey="value" name="Valor">
+                          {categoryChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[entry.name] || '#6366f1'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </Card>
+              </div>
             </div>
+          )}
+
+          {activeTab === 'categories' && (
+            <Card title="Gastos Variáveis por Categoria" className="animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="mb-6 flex justify-between items-center">
+                <p className="text-xs text-slate-500 italic">Gerencie gastos como alimentação, lazer e saúde.</p>
+                <button onClick={addCategorizedExpense} className="bg-purple-500 text-white px-6 py-2 rounded-xl flex items-center gap-2 hover:bg-purple-600 transition-all shadow-lg active:scale-95 cursor-pointer">
+                  <Plus className="w-5 h-5" /> Novo Gasto
+                </button>
+              </div>
+
+              <div className="overflow-x-auto border dark:border-slate-700 rounded-2xl shadow-sm">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50 border-b dark:border-slate-700 text-slate-500 uppercase font-semibold">
+                    <tr>
+                      <th className="px-4 py-3">Categoria</th>
+                      <th className="px-4 py-3">Mês</th>
+                      <th className="px-4 py-3">Descrição</th>
+                      <th className="px-4 py-3">Valor</th>
+                      <th className="px-4 py-3 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y dark:divide-slate-700">
+                    {data.categorizedExpenses.map(item => (
+                      <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                        <td className="px-4 py-3">
+                          <select 
+                            value={item.category} 
+                            onChange={(e) => setData(prev => ({...prev, categorizedExpenses: prev.categorizedExpenses.map(c => c.id === item.id ? {...c, category: e.target.value} : c)}))}
+                            className="bg-transparent dark:text-white outline-none font-medium p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                            style={{ color: CATEGORY_COLORS[item.category] }}
+                          >
+                            {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <select 
+                            value={item.month} 
+                            onChange={(e) => setData(prev => ({...prev, categorizedExpenses: prev.categorizedExpenses.map(c => c.id === item.id ? {...c, month: e.target.value} : c)}))}
+                            className="bg-transparent dark:text-white outline-none p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                          >
+                            {MONTHS_BR.map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input 
+                            type="text" 
+                            value={item.description} 
+                            onChange={(e) => setData(prev => ({...prev, categorizedExpenses: prev.categorizedExpenses.map(c => c.id === item.id ? {...c, description: e.target.value} : c)}))}
+                            className="bg-transparent dark:text-white outline-none border-b border-transparent focus:border-purple-500 w-full p-1"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input 
+                            type="number" 
+                            step="any"
+                            value={item.value === 0 ? "" : item.value} 
+                            onChange={(e) => setData(prev => ({...prev, categorizedExpenses: prev.categorizedExpenses.map(c => c.id === item.id ? {...c, value: parseFloat(e.target.value) || 0} : c)}))}
+                            className="bg-transparent text-purple-600 dark:text-purple-400 font-bold outline-none w-24 p-1"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => setData(prev => ({...prev, categorizedExpenses: prev.categorizedExpenses.filter(c => c.id !== item.id)}))} className="p-2 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {data.categorizedExpenses.length === 0 && (
+                      <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400 italic">Nenhum gasto registrado. Clique em "Novo Gasto" para começar.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           )}
 
           {activeTab === 'monthly' && (
@@ -664,7 +616,9 @@ export default function App() {
                   </thead>
                   <tbody className="divide-y dark:divide-slate-700">
                     {data.months.map((m) => {
-                      const totalExp = calculateTotalExpenses(m.expenses);
+                      const fixedExp = calculateTotalExpenses(m.expenses);
+                      const catExp = data.categorizedExpenses.filter(c => c.month === m.month).reduce((acc, curr) => acc + curr.value, 0);
+                      const totalExp = fixedExp + catExp;
                       const totalInc = calculateTotalIncome(m.income);
                       const balance = totalInc - totalExp;
                       
@@ -684,9 +638,6 @@ export default function App() {
                         </tr>
                       );
                     })}
-                    {data.months.length === 0 && (
-                      <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400 italic">Nenhum mês registrado.</td></tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -695,7 +646,7 @@ export default function App() {
 
           {activeTab === 'loans' && (
             <Card title="Empréstimos Ativos">
-              <div className="mb-4"><button onClick={() => setData(prev => ({...prev, loans: [...prev.loans, { id: Math.random().toString(36).substr(2,9), description: "Novo Empréstimo", totalValue: 0, installments: 1, paidInstallments: 0, installmentValue: 0, interestMonthly: 0 }]}))} className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer hover:bg-primary-600 transition-all"><Plus className="w-4 h-4" /> Novo Empréstimo</button></div>
+              <div className="mb-4"><button onClick={() => setData(prev => ({...prev, loans: [...prev.loans, { id: Math.random().toString(36).substr(2,9), description: "Novo Empréstimo", totalValue: 0, installments: 1, paidInstallments: 0, installmentValue: 0, interestMonthly: 0 }]}))} className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer hover:bg-primary-600 transition-all shadow-md"><Plus className="w-4 h-4" /> Novo Empréstimo</button></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {data.loans.map(loan => (
                   <div key={loan.id} className="p-5 border dark:border-slate-700 rounded-2xl space-y-4 relative group bg-white dark:bg-slate-800 shadow-sm">
@@ -713,77 +664,9 @@ export default function App() {
             </Card>
           )}
 
-          {activeTab === 'vehicle' && (
-            <Card title="Gastos com Veículos">
-              <div className="flex gap-2 mb-4">
-                <button onClick={() => addVehicleExpense(VehicleType.CAR)} className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95"><Plus className="w-4 h-4" /> Gasto Carro</button>
-                <button onClick={() => addVehicleExpense(VehicleType.MOTORCYCLE)} className="bg-amber-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95"><Plus className="w-4 h-4" /> Gasto Moto</button>
-              </div>
-              <div className="overflow-x-auto border dark:border-slate-700 rounded-2xl">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 dark:bg-slate-800/50 border-b dark:border-slate-700 text-slate-500 uppercase">
-                    <tr><th>Veículo</th><th>Categoria</th><th>Mês</th><th>Descrição</th><th>Valor</th><th>Ação</th></tr>
-                  </thead>
-                  <tbody className="divide-y dark:divide-slate-700">
-                    {data.vehicleExpenses.map(exp => (
-                      <tr key={exp.id} className="dark:text-white hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                        <td className="px-4 py-3 font-medium">{exp.type}</td>
-                        <td className="px-4 py-3">
-                          <select value={exp.category} onChange={(e) => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.map(v => v.id === exp.id ? {...v, category: e.target.value as VehicleCategory} : v)}))} className="bg-slate-100 dark:bg-slate-700 rounded px-2 py-1 outline-none text-xs">
-                            {Object.values(VehicleCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-4 py-3">
-                          <select value={exp.month} onChange={(e) => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.map(v => v.id === exp.id ? {...v, month: e.target.value} : v)}))} className="bg-transparent dark:bg-slate-800 outline-none">
-                            {MONTHS_BR.map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-4 py-3"><input type="text" value={exp.description} onChange={(e) => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.map(v => v.id === exp.id ? {...v, description: e.target.value} : v)}))} className="bg-transparent w-full outline-none focus:border-b" /></td>
-                        <td className="px-4 py-3 font-bold text-primary-500"><input type="number" step="any" value={exp.value === 0 ? "" : exp.value} onChange={(e) => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.map(v => v.id === exp.id ? {...v, value: parseFloat(e.target.value) || 0} : v)}))} className="bg-transparent w-24 outline-none font-bold" /></td>
-                        <td className="px-4 py-3"><button onClick={() => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.filter(v => v.id !== exp.id)}))} className="text-red-400 p-2 cursor-pointer hover:text-red-600"><Trash2 className="w-4 h-4" /></button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
-
-          {activeTab === 'savings' && (
-            <Card title="Controle de Poupança">
-              <div className="flex gap-2 mb-4">
-                <button onClick={() => addSavingsTransaction('entrada')} className="bg-emerald-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95"><Plus className="w-4 h-4" /> Entrada</button>
-                <button onClick={() => addSavingsTransaction('retirada')} className="bg-red-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95"><Plus className="w-4 h-4" /> Retirada</button>
-                <button onClick={() => addSavingsTransaction('rendimento')} className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95"><Plus className="w-4 h-4" /> Rendimento</button>
-              </div>
-              <div className="overflow-x-auto border dark:border-slate-700 rounded-2xl">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 dark:bg-slate-800/50 border-b dark:border-slate-700 text-slate-500 uppercase">
-                    <tr><th>Tipo</th><th>Mês</th><th>Descrição</th><th>Valor</th><th>Ação</th></tr>
-                  </thead>
-                  <tbody className="divide-y dark:divide-slate-700">
-                    {data.savings.map(s => (
-                      <tr key={s.id} className="dark:text-white hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                        <td className="px-4 py-3 text-xs font-bold uppercase">{s.type}</td>
-                        <td className="px-4 py-3">
-                          <select value={s.month} onChange={(e) => setData(prev => ({...prev, savings: prev.savings.map(item => item.id === s.id ? {...item, month: e.target.value} : item)}))} className="bg-transparent dark:bg-slate-800 outline-none font-medium">
-                            {MONTHS_BR.map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-4 py-3"><input type="text" value={s.description} onChange={(e) => setData(prev => ({...prev, savings: prev.savings.map(item => item.id === s.id ? {...item, description: e.target.value} : item)}))} className="bg-transparent w-full outline-none focus:border-b" /></td>
-                        <td className="px-4 py-3 font-bold text-emerald-500"><input type="number" step="any" value={s.value === 0 ? "" : s.value} onChange={(e) => setData(prev => ({...prev, savings: prev.savings.map(item => item.id === s.id ? {...item, value: parseFloat(e.target.value) || 0} : item)}))} className="bg-transparent w-24 outline-none font-bold" /></td>
-                        <td className="px-4 py-3"><button onClick={() => setData(prev => ({...prev, savings: prev.savings.filter(item => item.id !== s.id)}))} className="text-red-400 p-2 cursor-pointer hover:text-red-600"><Trash2 className="w-4 h-4" /></button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
-
           {activeTab === 'travel' && (
             <Card title="Registro de Viagens">
-              <div className="mb-6"><button onClick={() => setData(prev => ({...prev, trips: [...prev.trips, { id: Math.random().toString(36).substr(2,9), destination: "Nova Viagem", month: MONTHS_BR[new Date().getMonth()], carRental: 0, fuel: 0, food: 0, others: 0, creditCard: 0, pix: 0 }] }))} className="bg-primary-500 text-white px-6 py-2 rounded-xl flex items-center gap-2 cursor-pointer hover:bg-primary-600 transition-all active:scale-95"><Plus className="w-5 h-5" /> Nova Viagem</button></div>
+              <div className="mb-6"><button onClick={() => setData(prev => ({...prev, trips: [...prev.trips, { id: Math.random().toString(36).substr(2,9), destination: "Nova Viagem", month: MONTHS_BR[new Date().getMonth()], carRental: 0, fuel: 0, food: 0, others: 0, creditCard: 0, pix: 0 }] }))} className="bg-primary-500 text-white px-6 py-2 rounded-xl flex items-center gap-2 cursor-pointer hover:bg-primary-600 transition-all active:scale-95 shadow-md"><Plus className="w-5 h-5" /> Nova Viagem</button></div>
               <div className="grid grid-cols-1 gap-6">
                 {data.trips.map(trip => (
                   <div key={trip.id} className="p-6 border dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 relative group shadow-sm">
@@ -814,32 +697,172 @@ export default function App() {
               </div>
             </Card>
           )}
+
+          {activeTab === 'vehicle' && (
+            <Card title="Gastos com Veículos">
+              <div className="flex gap-2 mb-4">
+                <button onClick={() => setData(prev => ({...prev, vehicleExpenses: [...prev.vehicleExpenses, { id: Math.random().toString(36).substr(2, 9), type: VehicleType.CAR, category: VehicleCategory.FUEL, description: "Novo Gasto Carro", value: 0, month: MONTHS_BR[new Date().getMonth()] }] }))} className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95 hover:bg-primary-600 shadow-md">
+                  <Plus className="w-4 h-4" /> Gasto Carro
+                </button>
+                <button onClick={() => setData(prev => ({...prev, vehicleExpenses: [...prev.vehicleExpenses, { id: Math.random().toString(36).substr(2, 9), type: VehicleType.MOTORCYCLE, category: VehicleCategory.FUEL, description: "Novo Gasto Moto", value: 0, month: MONTHS_BR[new Date().getMonth()] }] }))} className="bg-amber-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95 hover:bg-amber-600 shadow-md">
+                  <Plus className="w-4 h-4" /> Gasto Moto
+                </button>
+              </div>
+              
+              <div className="overflow-x-auto border dark:border-slate-700 rounded-2xl shadow-sm">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50 border-b dark:border-slate-700 text-slate-500 uppercase font-semibold">
+                    <tr>
+                      <th className="px-4 py-3">Veículo</th>
+                      <th className="px-4 py-3">Categoria</th>
+                      <th className="px-4 py-3">Mês</th>
+                      <th className="px-4 py-3">Descrição</th>
+                      <th className="px-4 py-3">Valor</th>
+                      <th className="px-4 py-3 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y dark:divide-slate-700">
+                    {data.vehicleExpenses.map(exp => (
+                      <tr key={exp.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                        <td className="px-4 py-3">
+                           <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${exp.type === VehicleType.CAR ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'}`}>
+                             {exp.type}
+                           </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <select 
+                            value={exp.category} 
+                            onChange={(e) => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.map(v => v.id === exp.id ? {...v, category: e.target.value as VehicleCategory} : v)}))}
+                            className="bg-transparent dark:text-white outline-none"
+                          >
+                            {Object.values(VehicleCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <select 
+                            value={exp.month} 
+                            onChange={(e) => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.map(v => v.id === exp.id ? {...v, month: e.target.value} : v)}))}
+                            className="bg-transparent dark:text-white outline-none"
+                          >
+                            {MONTHS_BR.map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input 
+                            type="text" 
+                            value={exp.description} 
+                            onChange={(e) => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.map(v => v.id === exp.id ? {...v, description: e.target.value} : v)}))}
+                            className="bg-transparent dark:text-white outline-none border-b border-transparent focus:border-primary-500 w-full"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input 
+                            type="number" 
+                            step="any"
+                            value={exp.value === 0 ? "" : exp.value} 
+                            onChange={(e) => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.map(v => v.id === exp.id ? {...v, value: parseFloat(e.target.value) || 0} : v)}))}
+                            className="bg-transparent text-primary-600 dark:text-primary-400 font-bold outline-none w-24"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => setData(prev => ({...prev, vehicleExpenses: prev.vehicleExpenses.filter(v => v.id !== exp.id)}))} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {data.vehicleExpenses.length === 0 && (
+                      <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400 italic">Nenhum gasto veicular registrado.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {activeTab === 'savings' && (
+            <Card title="Controle de Poupança">
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button onClick={() => setData(prev => ({...prev, savings: [...prev.savings, { id: Math.random().toString(36).substr(2, 9), type: 'entrada', value: 0, description: "Depósito", month: MONTHS_BR[new Date().getMonth()] }] }))} className="bg-emerald-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95 hover:bg-emerald-600 shadow-md">
+                  <Plus className="w-4 h-4" /> Entrada
+                </button>
+                <button onClick={() => setData(prev => ({...prev, savings: [...prev.savings, { id: Math.random().toString(36).substr(2, 9), type: 'retirada', value: 0, description: "Retirada", month: MONTHS_BR[new Date().getMonth()] }] }))} className="bg-red-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95 hover:bg-red-600 shadow-md">
+                  <Plus className="w-4 h-4" /> Retirada
+                </button>
+                <button onClick={() => setData(prev => ({...prev, savings: [...prev.savings, { id: Math.random().toString(36).substr(2, 9), type: 'rendimento', value: 0, description: "Rendimento", month: MONTHS_BR[new Date().getMonth()] }] }))} className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer active:scale-95 hover:bg-primary-600 shadow-md">
+                  <Plus className="w-4 h-4" /> Rendimento
+                </button>
+              </div>
+
+              <div className="overflow-x-auto border dark:border-slate-700 rounded-2xl shadow-sm">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50 border-b dark:border-slate-700 text-slate-500 uppercase font-semibold">
+                    <tr>
+                      <th className="px-4 py-3">Tipo</th>
+                      <th className="px-4 py-3">Mês</th>
+                      <th className="px-4 py-3">Descrição</th>
+                      <th className="px-4 py-3">Valor</th>
+                      <th className="px-4 py-3 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y dark:divide-slate-700">
+                    {data.savings.map(s => (
+                      <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                        <td className="px-4 py-3">
+                           <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${s.type === 'entrada' ? 'bg-emerald-100 text-emerald-600' : s.type === 'rendimento' ? 'bg-primary-100 text-primary-600' : 'bg-red-100 text-red-600'}`}>
+                             {s.type}
+                           </span>
+                        </td>
+                        <td className="px-4 py-3">
+                           <select 
+                            value={s.month} 
+                            onChange={(e) => setData(prev => ({...prev, savings: prev.savings.map(item => item.id === s.id ? {...item, month: e.target.value} : item)}))}
+                            className="bg-transparent dark:text-white outline-none"
+                          >
+                            {MONTHS_BR.map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input 
+                            type="text" 
+                            value={s.description} 
+                            onChange={(e) => setData(prev => ({...prev, savings: prev.savings.map(item => item.id === s.id ? {...item, description: e.target.value} : item)}))}
+                            className="bg-transparent dark:text-white outline-none border-b border-transparent focus:border-emerald-500 w-full"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input 
+                            type="number" 
+                            step="any"
+                            value={s.value === 0 ? "" : s.value} 
+                            onChange={(e) => setData(prev => ({...prev, savings: prev.savings.map(item => item.id === s.id ? {...item, value: parseFloat(e.target.value) || 0} : item)}))}
+                            className="bg-transparent font-bold outline-none w-24 text-slate-700 dark:text-slate-300"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => setData(prev => ({...prev, savings: prev.savings.filter(item => item.id !== s.id)}))} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {data.savings.length === 0 && (
+                      <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400 italic">Nenhuma transação registrada.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
         </div>
       </main>
 
       <Modal isOpen={!!selectedMonthId} onClose={() => setSelectedMonthId(null)} title={`Detalhes: ${selectedMonth?.month || ''}`}>
         {selectedMonth && (
           <div className="space-y-8">
-            <div className="flex items-center gap-6 p-5 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border dark:border-slate-700 shadow-inner">
-               <label className="text-sm font-bold dark:text-slate-300">Selecione o Mês:</label>
-               <select 
-                 value={selectedMonth.month} 
-                 onChange={(e) => {
-                    const newMonthName = e.target.value;
-                    setData(prev => ({
-                      ...prev,
-                      months: prev.months.map(m => m.id === selectedMonth.id ? { ...m, month: newMonthName } : m)
-                    }));
-                 }}
-                 className="flex-1 bg-white dark:bg-slate-800 rounded-xl px-5 py-3 outline-none dark:text-white border-2 border-transparent focus:border-primary-500 font-bold text-lg shadow-sm cursor-pointer"
-               >
-                 {MONTHS_BR.map(m => <option key={m} value={m}>{m}</option>)}
-               </select>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
               <div className="space-y-4">
-                <h4 className="font-black text-red-500 border-b-2 border-red-500/20 pb-2 flex items-center gap-2 uppercase tracking-widest text-sm">Saídas (Gastos)</h4>
+                <h4 className="font-black text-red-500 border-b-2 border-red-500/20 pb-2 flex items-center gap-2 uppercase tracking-widest text-sm">Contas Fixas (Saídas)</h4>
                 <div className="grid grid-cols-2 gap-4">
                   {Object.keys(selectedMonth.expenses).map(key => (
                     <div key={key}>
@@ -848,20 +871,16 @@ export default function App() {
                         type="number" 
                         step="any"
                         value={(selectedMonth.expenses as any)[key] === 0 ? "" : (selectedMonth.expenses as any)[key]} 
-                        onChange={(e) => updateMonthField(selectedMonth.id, 'expenses', key, e.target.value)} 
-                        className="w-full p-3 bg-white dark:bg-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-red-500/30 border border-slate-100 dark:border-slate-600 font-bold shadow-sm" 
+                        onChange={(e) => setData(prev => ({...prev, months: prev.months.map(m => m.id === selectedMonth.id ? {...m, expenses: {...m.expenses, [key]: parseFloat(e.target.value) || 0}} : m)}))} 
+                        className="w-full p-3 bg-white dark:bg-slate-700 rounded-xl dark:text-white outline-none border border-slate-100 dark:border-slate-600 font-bold" 
                       />
                     </div>
                   ))}
                 </div>
-                <div className="p-4 bg-red-50 dark:bg-red-900/10 rounded-xl text-center border border-red-100 dark:border-red-900/20 shadow-sm">
-                    <p className="text-xs text-red-400 font-bold uppercase mb-1">Total Despesas</p>
-                    <p className="text-2xl font-black text-red-600">{formatCurrency(calculateTotalExpenses(selectedMonth.expenses))}</p>
-                </div>
               </div>
 
               <div className="space-y-4">
-                <h4 className="font-black text-emerald-500 border-b-2 border-emerald-500/20 pb-2 flex items-center gap-2 uppercase tracking-widest text-sm">Entradas (Ganhos)</h4>
+                <h4 className="font-black text-emerald-500 border-b-2 border-emerald-500/20 pb-2 flex items-center gap-2 uppercase tracking-widest text-sm">Receitas (Entradas)</h4>
                 <div className="grid grid-cols-2 gap-4">
                   {Object.keys(selectedMonth.income).map(key => (
                     <div key={key}>
@@ -870,41 +889,36 @@ export default function App() {
                         type="number" 
                         step="any"
                         value={(selectedMonth.income as any)[key] === 0 ? "" : (selectedMonth.income as any)[key]} 
-                        onChange={(e) => updateMonthField(selectedMonth.id, 'income', key, e.target.value)} 
-                        className="w-full p-3 bg-white dark:bg-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/30 border border-slate-100 dark:border-slate-600 font-bold shadow-sm" 
+                        onChange={(e) => setData(prev => ({...prev, months: prev.months.map(m => m.id === selectedMonth.id ? {...m, income: {...m.income, [key]: parseFloat(e.target.value) || 0}} : m)}))} 
+                        className="w-full p-3 bg-white dark:bg-slate-700 rounded-xl dark:text-white outline-none border border-slate-100 dark:border-slate-600 font-bold" 
                       />
                     </div>
                   ))}
-                </div>
-                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl text-center border border-emerald-100 dark:border-emerald-900/20 shadow-sm">
-                    <p className="text-xs text-emerald-400 font-bold uppercase mb-1">Total Receitas</p>
-                    <p className="text-2xl font-black text-emerald-600">{formatCurrency(calculateTotalIncome(selectedMonth.income))}</p>
                 </div>
               </div>
             </div>
 
             <div className="p-6 bg-slate-900 dark:bg-black/90 rounded-3xl flex flex-wrap gap-6 justify-between items-center text-white border border-slate-800 shadow-2xl">
               <div className="space-y-1">
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Resultado do Mês</p>
-                <p className={`text-3xl font-black ${calculateTotalIncome(selectedMonth.income) - calculateTotalExpenses(selectedMonth.expenses) >= 0 ? 'text-primary-400' : 'text-red-400'}`}>
-                   {formatCurrency(calculateTotalIncome(selectedMonth.income) - calculateTotalExpenses(selectedMonth.expenses))}
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Resultado Final</p>
+                <p className={`text-3xl font-black ${calculateTotalIncome(selectedMonth.income) - (calculateTotalExpenses(selectedMonth.expenses) + data.categorizedExpenses.filter(c => c.month === selectedMonth.month).reduce((a, b) => a + b.value, 0)) >= 0 ? 'text-primary-400' : 'text-red-400'}`}>
+                   {formatCurrency(calculateTotalIncome(selectedMonth.income) - (calculateTotalExpenses(selectedMonth.expenses) + data.categorizedExpenses.filter(c => c.month === selectedMonth.month).reduce((a, b) => a + b.value, 0)))}
                 </p>
-              </div>
-              <div className="text-xs text-slate-400 italic">
-                Edite os valores acima para atualizar o balanço.
+                <p className="text-[10px] text-slate-500">* Incluindo gastos categorizados do mês.</p>
               </div>
             </div>
           </div>
         )}
       </Modal>
 
-      <footer className="md:hidden fixed bottom-0 w-full bg-white dark:bg-slate-900 border-t dark:border-slate-800 p-2 grid grid-cols-6 gap-1 z-40 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)]">
-        <button onClick={() => setActiveTab('dashboard')} className={`p-2 flex flex-col items-center transition-colors cursor-pointer ${activeTab === 'dashboard' ? 'text-primary-500' : 'text-slate-400'}`}><LayoutDashboard className="w-5 h-5" /><span className="text-[9px] font-bold">Painel</span></button>
-        <button onClick={() => setActiveTab('monthly')} className={`p-2 flex flex-col items-center transition-colors cursor-pointer ${activeTab === 'monthly' ? 'text-primary-500' : 'text-slate-400'}`}><TableIcon className="w-5 h-5" /><span className="text-[9px] font-bold">Lanç.</span></button>
-        <button onClick={() => setActiveTab('loans')} className={`p-2 flex flex-col items-center transition-colors cursor-pointer ${activeTab === 'loans' ? 'text-primary-500' : 'text-slate-400'}`}><CreditCard className="w-5 h-5" /><span className="text-[9px] font-bold">Emp.</span></button>
-        <button onClick={() => setActiveTab('travel')} className={`p-2 flex flex-col items-center transition-colors cursor-pointer ${activeTab === 'travel' ? 'text-primary-500' : 'text-slate-400'}`}><Plane className="w-5 h-5" /><span className="text-[9px] font-bold">Viagem</span></button>
-        <button onClick={() => setActiveTab('vehicle')} className={`p-2 flex flex-col items-center transition-colors cursor-pointer ${activeTab === 'vehicle' ? 'text-primary-500' : 'text-slate-400'}`}><Car className="w-5 h-5" /><span className="text-[9px] font-bold">Auto</span></button>
-        <button onClick={() => setActiveTab('savings')} className={`p-2 flex flex-col items-center transition-colors cursor-pointer ${activeTab === 'savings' ? 'text-primary-500' : 'text-slate-400'}`}><PiggyBank className="w-5 h-5" /><span className="text-[9px] font-bold">Poupa</span></button>
+      <footer className="md:hidden fixed bottom-0 w-full bg-white dark:bg-slate-900 border-t dark:border-slate-800 p-2 grid grid-cols-7 gap-1 z-40 shadow-lg">
+        <button onClick={() => setActiveTab('dashboard')} className={`p-2 flex flex-col items-center cursor-pointer ${activeTab === 'dashboard' ? 'text-primary-500' : 'text-slate-400'}`}><LayoutDashboard className="w-5 h-5" /><span className="text-[8px] font-bold">Painel</span></button>
+        <button onClick={() => setActiveTab('monthly')} className={`p-2 flex flex-col items-center cursor-pointer ${activeTab === 'monthly' ? 'text-primary-500' : 'text-slate-400'}`}><TableIcon className="w-5 h-5" /><span className="text-[8px] font-bold">Fixos</span></button>
+        <button onClick={() => setActiveTab('categories')} className={`p-2 flex flex-col items-center cursor-pointer ${activeTab === 'categories' ? 'text-primary-500' : 'text-slate-400'}`}><Tag className="w-5 h-5" /><span className="text-[8px] font-bold">Cats</span></button>
+        <button onClick={() => setActiveTab('loans')} className={`p-2 flex flex-col items-center cursor-pointer ${activeTab === 'loans' ? 'text-primary-500' : 'text-slate-400'}`}><CreditCard className="w-5 h-5" /><span className="text-[8px] font-bold">Emp.</span></button>
+        <button onClick={() => setActiveTab('travel')} className={`p-2 flex flex-col items-center cursor-pointer ${activeTab === 'travel' ? 'text-primary-500' : 'text-slate-400'}`}><Plane className="w-5 h-5" /><span className="text-[8px] font-bold">Viagem</span></button>
+        <button onClick={() => setActiveTab('vehicle')} className={`p-2 flex flex-col items-center cursor-pointer ${activeTab === 'vehicle' ? 'text-primary-500' : 'text-slate-400'}`}><Car className="w-5 h-5" /><span className="text-[8px] font-bold">Auto</span></button>
+        <button onClick={() => setActiveTab('savings')} className={`p-2 flex flex-col items-center cursor-pointer ${activeTab === 'savings' ? 'text-primary-500' : 'text-slate-400'}`}><PiggyBank className="w-5 h-5" /><span className="text-[8px] font-bold">Poupa</span></button>
       </footer>
     </div>
   );
