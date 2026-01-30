@@ -167,24 +167,25 @@ export default function App() {
     data.vehicleExpenses.forEach(exp => {
       const type = exp.type === VehicleType.CAR ? 'car' : 'moto';
       const cat = exp.category === VehicleCategory.FUEL ? 'fuel' : 'maintenance';
-      vehicle[type][cat] += exp.value;
+      vehicle[type][cat] += Number(exp.value || 0);
     });
 
     const loans = {
-      paid: data.loans.reduce((acc, l) => acc + (l.paidInstallments * l.installmentValue), 0),
-      remaining: data.loans.reduce((acc, l) => acc + ((l.installments - l.paidInstallments) * l.installmentValue), 0)
+      paid: data.loans.reduce((acc, l) => acc + (Number(l.paidInstallments) * Number(l.installmentValue)), 0),
+      remaining: data.loans.reduce((acc, l) => acc + ((Number(l.installments) - Number(l.paidInstallments)) * Number(l.installmentValue)), 0)
     };
 
     const savings = {
       total: data.savings.reduce((acc, s) => {
-        if (s.type === 'entrada' || s.type === 'rendimento') return acc + s.value;
-        return acc - s.value;
+        const val = Number(s.value || 0);
+        if (s.type === 'entrada' || s.type === 'rendimento') return acc + val;
+        return acc - val;
       }, 0),
-      earnings: data.savings.reduce((acc, s) => s.type === 'rendimento' ? acc + s.value : acc, 0)
+      earnings: data.savings.reduce((acc, s) => s.type === 'rendimento' ? acc + Number(s.value || 0) : acc, 0)
     };
 
-    const travel = data.trips.reduce((acc, t) => acc + t.carRental + t.fuel + t.food + t.others + t.creditCard + t.pix, 0);
-    const catExpenses = data.categorizedExpenses.reduce((acc, c) => acc + c.value, 0);
+    const travel = data.trips.reduce((acc, t) => acc + Number(t.carRental || 0) + Number(t.fuel || 0) + Number(t.food || 0) + Number(t.others || 0) + Number(t.creditCard || 0) + Number(t.pix || 0), 0);
+    const catExpenses = data.categorizedExpenses.reduce((acc, c) => acc + Number(c.value || 0), 0);
 
     return { vehicle, loans, savings, travel, catExpenses };
   }, [data]);
@@ -217,7 +218,8 @@ export default function App() {
       body: [
         ['Patrimônio na Poupança', formatCurrency(stats.savings.total)],
         ['Saldo Devedor de Empréstimos', formatCurrency(stats.loans.remaining)],
-        ['Gastos Variáveis por Categoria', formatCurrency(stats.catExpenses)],
+        ['Gastos Fixos Mensais', formatCurrency(data.months.reduce((acc, m) => acc + calculateTotalExpenses(m.expenses), 0))],
+        ['Gastos Variáveis (Categorias)', formatCurrency(stats.catExpenses)],
         ['Investimento em Viagens', formatCurrency(stats.travel)],
         ['Gastos Totais com Veículos', formatCurrency(stats.vehicle.car.fuel + stats.vehicle.car.maintenance + stats.vehicle.moto.fuel + stats.vehicle.moto.maintenance)],
       ],
@@ -229,51 +231,26 @@ export default function App() {
 
     // Seção 2: Controle Mensal
     doc.setFontSize(16);
-    doc.text('2. Controle Mensal Detalhado', 15, currentY);
+    doc.text('2. Controle Mensal (Fixos)', 15, currentY);
     currentY += 10;
 
     const monthlyBody = data.months.map(m => {
       const fixedExp = calculateTotalExpenses(m.expenses);
-      const catExp = data.categorizedExpenses.filter(c => c.month === m.month).reduce((acc, curr) => acc + curr.value, 0);
-      const totalExp = fixedExp + catExp;
       const totalInc = calculateTotalIncome(m.income);
       return [
         m.month,
-        formatCurrency(totalExp),
+        formatCurrency(fixedExp),
         formatCurrency(totalInc),
-        formatCurrency(totalInc - totalExp)
+        formatCurrency(totalInc - fixedExp)
       ];
     });
 
     autoTable(doc, {
       startY: currentY,
-      head: [['Mês', 'Total Despesas', 'Total Receitas', 'Balanço']],
+      head: [['Mês', 'Gastos Fixos', 'Total Receitas', 'Balanço (Receita - Fixos)']],
       body: monthlyBody,
       theme: 'grid',
       headStyles: { fillColor: [14, 165, 233] }
-    });
-
-    currentY = (doc as any).lastAutoTable.finalY + 15;
-
-    // Seção 3: Gastos por Categoria
-    if (currentY > 200) { doc.addPage(); currentY = 20; }
-    doc.setFontSize(16);
-    doc.text('3. Gastos por Categoria', 15, currentY);
-    currentY += 10;
-
-    const catBody = data.categorizedExpenses.map(c => [
-      c.category,
-      c.month,
-      c.description,
-      formatCurrency(c.value)
-    ]);
-
-    autoTable(doc, {
-      startY: currentY,
-      head: [['Categoria', 'Mês', 'Descrição', 'Valor']],
-      body: catBody,
-      theme: 'striped',
-      headStyles: { fillColor: [168, 85, 247] } // Purple 500
     });
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
@@ -380,22 +357,20 @@ export default function App() {
   const chartData = useMemo(() => {
     return data.months.map((m) => {
       const fixedExpenses = calculateTotalExpenses(m.expenses);
-      const categorizedExp = data.categorizedExpenses.filter(c => c.month === m.month).reduce((acc, curr) => acc + curr.value, 0);
-      const totalExp = fixedExpenses + categorizedExp;
       const incomeTotal = calculateTotalIncome(m.income);
       return {
         name: m.month,
-        gastos: totalExp,
+        gastos: fixedExpenses,
         ganhos: incomeTotal,
-        balanco: incomeTotal - totalExp
+        balanco: incomeTotal - fixedExpenses
       };
     });
-  }, [data.months, data.categorizedExpenses]);
+  }, [data.months]);
 
   const categoryChartData = useMemo(() => {
     const totals: Record<string, number> = {};
     data.categorizedExpenses.forEach(c => {
-      totals[c.category] = (totals[c.category] || 0) + c.value;
+      totals[c.category] = (totals[c.category] || 0) + Number(c.value || 0);
     });
     return Object.keys(totals).map(cat => ({ name: cat, value: totals[cat] }));
   }, [data.categorizedExpenses]);
@@ -454,7 +429,7 @@ export default function App() {
           <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard className="w-5 h-5" />} label="Painel" />
           <TabButton active={activeTab === 'monthly'} onClick={() => setActiveTab('monthly')} icon={<TableIcon className="w-5 h-5" />} label="Fixos" />
           <TabButton active={activeTab === 'categories'} onClick={() => setActiveTab('categories')} icon={<Tag className="w-5 h-5" />} label="Categorias" />
-          <TabButton active={activeTab === 'loans'} onClick={() => setActiveTab('loans')} icon={<CreditCard className="w-5 h-5" />} label="Empréstimos" />
+          <TabButton active={activeTab === 'loans'} onClick={() => setActiveTab('loans'} icon={<CreditCard className="w-5 h-5" />} label="Empréstimos" />
           <TabButton active={activeTab === 'travel'} onClick={() => setActiveTab('travel')} icon={<Plane className="w-5 h-5" />} label="Viagens" />
           <TabButton active={activeTab === 'vehicle'} onClick={() => setActiveTab('vehicle')} icon={<Car className="w-5 h-5" />} label="Veículos" />
           <TabButton active={activeTab === 'savings'} onClick={() => setActiveTab('savings')} icon={<PiggyBank className="w-5 h-5" />} label="Poupança" />
@@ -514,7 +489,7 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card title="Evolução Financeira Mensal" className="h-[400px]">
+                <Card title="Evolução Ganhos vs Fixos" className="h-[400px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
@@ -522,8 +497,8 @@ export default function App() {
                       <YAxis stroke={isDarkMode ? '#94a3b8' : '#64748b'} />
                       <Tooltip contentStyle={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: 'none' }} />
                       <Legend />
-                      <Bar dataKey="gastos" fill="#f43f5e" name="Total Gastos" radius={[6,6,0,0]} />
-                      <Bar dataKey="ganhos" fill="#10b981" name="Total Ganhos" radius={[6,6,0,0]} />
+                      <Bar dataKey="gastos" fill="#f43f5e" name="Gastos Fixos" radius={[6,6,0,0]} />
+                      <Bar dataKey="ganhos" fill="#10b981" name="Ganhos Totais" radius={[6,6,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>
@@ -639,24 +614,28 @@ export default function App() {
                   <thead className="bg-slate-50 dark:bg-slate-800/50 border-b dark:border-slate-700 text-slate-500 uppercase font-semibold">
                     <tr>
                       <th className="px-4 py-3">Mês</th>
-                      <th className="px-4 py-3">Gastos Totais</th>
-                      <th className="px-4 py-3">Ganhos Totais</th>
-                      <th className="px-4 py-3">Balanço Mensal</th>
+                      <th className="px-4 py-3">Gastos Fixos</th>
+                      <th className="px-4 py-3">Categorias (Info)</th>
+                      <th className="px-4 py-3">Veicular (Info)</th>
+                      <th className="px-4 py-3">Total Receitas</th>
+                      <th className="px-4 py-3">Balanço (Receita - Fixos)</th>
                       <th className="px-4 py-3 text-right">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y dark:divide-slate-700">
                     {data.months.map((m) => {
                       const fixedExp = calculateTotalExpenses(m.expenses);
-                      const catExp = data.categorizedExpenses.filter(c => c.month === m.month).reduce((acc, curr) => acc + curr.value, 0);
-                      const totalExp = fixedExp + catExp;
+                      const catExp = data.categorizedExpenses.filter(c => c.month === m.month).reduce((acc, curr) => acc + Number(curr.value || 0), 0);
+                      const vehExp = data.vehicleExpenses.filter(v => v.month === m.month).reduce((acc, curr) => acc + Number(curr.value || 0), 0);
                       const totalInc = calculateTotalIncome(m.income);
-                      const balance = totalInc - totalExp;
+                      const balance = totalInc - fixedExp;
                       
                       return (
                         <tr key={m.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors group" onClick={() => setSelectedMonthId(m.id)}>
                           <td className="px-4 py-4 font-semibold dark:text-white">{m.month}</td>
-                          <td className="px-4 py-4 text-red-500 font-medium">{formatCurrency(totalExp)}</td>
+                          <td className="px-4 py-4 text-red-500/70 font-medium">{formatCurrency(fixedExp)}</td>
+                          <td className="px-4 py-4 text-slate-400 italic">{formatCurrency(catExp)}</td>
+                          <td className="px-4 py-4 text-slate-400 italic">{formatCurrency(vehExp)}</td>
                           <td className="px-4 py-4 text-emerald-500 font-medium">{formatCurrency(totalInc)}</td>
                           <td className={`px-4 py-4 font-bold ${balance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                             {formatCurrency(balance)}
@@ -919,7 +898,7 @@ export default function App() {
                       <input 
                         type="number" 
                         step="any"
-                        value={(selectedMonth.income as any)[key] === 0 ? "" : (selectedMonth.income as any)[key]} 
+                        value={(selectedMonth.income as any)[key] || ""} 
                         onChange={(e) => setData(prev => ({...prev, months: prev.months.map(m => m.id === selectedMonth.id ? {...m, income: {...m.income, [key]: parseFloat(e.target.value) || 0}} : m)}))} 
                         className="w-full p-3 bg-white dark:bg-slate-700 rounded-xl dark:text-white outline-none border border-slate-100 dark:border-slate-600 font-bold" 
                       />
@@ -931,11 +910,20 @@ export default function App() {
 
             <div className="p-6 bg-slate-900 dark:bg-black/90 rounded-3xl flex flex-wrap gap-6 justify-between items-center text-white border border-slate-800 shadow-2xl">
               <div className="space-y-1">
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Resultado Final</p>
-                <p className={`text-3xl font-black ${calculateTotalIncome(selectedMonth.income) - (calculateTotalExpenses(selectedMonth.expenses) + data.categorizedExpenses.filter(c => c.month === selectedMonth.month).reduce((a, b) => a + b.value, 0)) >= 0 ? 'text-primary-400' : 'text-red-400'}`}>
-                   {formatCurrency(calculateTotalIncome(selectedMonth.income) - (calculateTotalExpenses(selectedMonth.expenses) + data.categorizedExpenses.filter(c => c.month === selectedMonth.month).reduce((a, b) => a + b.value, 0)))}
-                </p>
-                <p className="text-[10px] text-slate-500">* Incluindo gastos categorizados do mês.</p>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Resultado Final (Fixos)</p>
+                {(() => {
+                   const fixed = calculateTotalExpenses(selectedMonth.expenses);
+                   const income = calculateTotalIncome(selectedMonth.income);
+                   const balance = income - fixed;
+                   return (
+                    <>
+                      <p className={`text-3xl font-black ${balance >= 0 ? 'text-primary-400' : 'text-red-400'}`}>
+                        {formatCurrency(balance)}
+                      </p>
+                      <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tight">* Baseado em: Ganhos ({formatCurrency(income)}) - Fixos ({formatCurrency(fixed)})</p>
+                    </>
+                   );
+                })()}
               </div>
             </div>
           </div>

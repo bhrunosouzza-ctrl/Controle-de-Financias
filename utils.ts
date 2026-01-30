@@ -12,12 +12,22 @@ export const MONTHS_BR = [
 ];
 
 export const calculateTotalExpenses = (exp: any): number => {
-  return (exp.inter || 0) + (exp.nubank || 0) + (exp.mPago || 0) + 
-         (exp.agua || 0) + (exp.energia || 0) + (exp.outros || 0) + (exp.pix || 0);
+  if (!exp) return 0;
+  return Number(exp.inter || 0) + 
+         Number(exp.nubank || 0) + 
+         Number(exp.mPago || 0) + 
+         Number(exp.agua || 0) + 
+         Number(exp.energia || 0) + 
+         Number(exp.outros || 0) + 
+         Number(exp.pix || 0);
 };
 
 export const calculateTotalIncome = (inc: any): number => {
-  return (inc.salario || 0) + (inc.bonus || 0) + (inc.outros || 0) + (inc.recargaPay || 0);
+  if (!inc) return 0;
+  return Number(inc.salario || 0) + 
+         Number(inc.bonus || 0) + 
+         Number(inc.outros || 0) + 
+         Number(inc.recargaPay || 0);
 };
 
 export const getNextMonthSalary = (currentMonthName: string, allMonths: any[]): number => {
@@ -27,7 +37,6 @@ export const getNextMonthSalary = (currentMonthName: string, allMonths: any[]): 
   const nextIdx = (currentIdx + 1) % 12;
   const nextMonthName = MONTHS_BR[nextIdx];
   
-  // Try to find the next month in the data set to get its salary
   const nextMonthData = allMonths.find(m => m.month === nextMonthName);
-  return nextMonthData ? (nextMonthData.income.salario || 0) : 0;
+  return nextMonthData ? Number(nextMonthData.income.salario || 0) : 0;
 };
