@@ -429,7 +429,7 @@ export default function App() {
           <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard className="w-5 h-5" />} label="Painel" />
           <TabButton active={activeTab === 'monthly'} onClick={() => setActiveTab('monthly')} icon={<TableIcon className="w-5 h-5" />} label="Fixos" />
           <TabButton active={activeTab === 'categories'} onClick={() => setActiveTab('categories')} icon={<Tag className="w-5 h-5" />} label="Categorias" />
-          <TabButton active={activeTab === 'loans'} onClick={() => setActiveTab('loans'} icon={<CreditCard className="w-5 h-5" />} label="Empréstimos" />
+          <TabButton active={activeTab === 'loans'} onClick={() => setActiveTab('loans')} icon={<CreditCard className="w-5 h-5" />} label="Empréstimos" />
           <TabButton active={activeTab === 'travel'} onClick={() => setActiveTab('travel')} icon={<Plane className="w-5 h-5" />} label="Viagens" />
           <TabButton active={activeTab === 'vehicle'} onClick={() => setActiveTab('vehicle')} icon={<Car className="w-5 h-5" />} label="Veículos" />
           <TabButton active={activeTab === 'savings'} onClick={() => setActiveTab('savings')} icon={<PiggyBank className="w-5 h-5" />} label="Poupança" />
