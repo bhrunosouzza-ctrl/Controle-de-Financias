@@ -255,6 +255,85 @@ export default function App() {
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
 
+    // Seção 3: Gastos por Categoria
+    if (currentY > 240) { doc.addPage(); currentY = 20; }
+    doc.setFontSize(16);
+    doc.text('3. Gastos por Categoria', 15, currentY);
+    currentY += 10;
+
+    const categoryBody = data.categorizedExpenses.map(c => [
+      c.category,
+      c.month,
+      c.description,
+      formatCurrency(c.value)
+    ]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Categoria', 'Mês', 'Descrição', 'Valor']],
+      body: categoryBody,
+      theme: 'striped',
+      headStyles: { fillColor: [14, 165, 233] }
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 15;
+
+    // Seção 4: Detalhamento de Veículos
+    if (currentY > 240) { doc.addPage(); currentY = 20; }
+    doc.setFontSize(16);
+    doc.text('4. Detalhamento de Veículos', 15, currentY);
+    currentY += 10;
+
+    const vehicleBody = data.vehicleExpenses.map(v => [
+      v.type,
+      v.category,
+      v.description,
+      formatCurrency(v.value),
+      v.month
+    ]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Tipo', 'Categoria', 'Descrição', 'Valor', 'Mês']],
+      body: vehicleBody,
+      theme: 'striped',
+      headStyles: { fillColor: [14, 165, 233] }
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 15;
+
+    // Seção 5: Detalhamento de Viagens
+    if (currentY > 240) { doc.addPage(); currentY = 20; }
+    doc.setFontSize(16);
+    doc.text('5. Detalhamento de Viagens', 15, currentY);
+    currentY += 10;
+
+    const tripsBody = data.trips.map(t => {
+      const total = Number(t.carRental || 0) + Number(t.fuel || 0) + Number(t.food || 0) + Number(t.others || 0) + Number(t.creditCard || 0) + Number(t.pix || 0);
+      return [
+        t.destination,
+        t.month,
+        formatCurrency(t.carRental),
+        formatCurrency(t.fuel),
+        formatCurrency(t.food),
+        formatCurrency(t.others),
+        formatCurrency(t.creditCard),
+        formatCurrency(t.pix),
+        formatCurrency(total)
+      ];
+    });
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Destino', 'Mês', 'Aluguel', 'Combust.', 'Aliment.', 'Outros', 'Cartão', 'Pix', 'Total']],
+      body: tripsBody,
+      theme: 'striped',
+      headStyles: { fillColor: [14, 165, 233] },
+      styles: { fontSize: 7 }
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 15;
+
     // Rodapé em todas as páginas
     const totalPages = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
@@ -374,6 +453,54 @@ export default function App() {
     });
     return Object.keys(totals).map(cat => ({ name: cat, value: totals[cat] }));
   }, [data.categorizedExpenses]);
+
+  const annualExpensesData = useMemo(() => {
+    const totals = {
+      inter: 0,
+      nubank: 0,
+      mPago: 0,
+      agua: 0,
+      energia: 0,
+      outros: 0,
+      pix: 0
+    };
+    data.months.forEach(m => {
+      totals.inter += Number(m.expenses.inter || 0);
+      totals.nubank += Number(m.expenses.nubank || 0);
+      totals.mPago += Number(m.expenses.mPago || 0);
+      totals.agua += Number(m.expenses.agua || 0);
+      totals.energia += Number(m.expenses.energia || 0);
+      totals.outros += Number(m.expenses.outros || 0);
+      totals.pix += Number(m.expenses.pix || 0);
+    });
+    return [
+      { name: 'Inter', value: totals.inter, color: '#6366f1' },
+      { name: 'NuBank', value: totals.nubank, color: '#8b5cf6' },
+      { name: 'MPago', value: totals.mPago, color: '#ec4899' },
+      { name: 'Água', value: totals.agua, color: '#0ea5e9' },
+      { name: 'Energia', value: totals.energia, color: '#eab308' },
+      { name: 'Outros', value: totals.outros, color: '#94a3b8' },
+      { name: 'Pix', value: totals.pix, color: '#10b981' }
+    ];
+  }, [data.months]);
+
+  const annualIncomeData = useMemo(() => {
+    const totals = {
+      salario: 0,
+      bonus: 0,
+      outros: 0
+    };
+    data.months.forEach(m => {
+      totals.salario += Number(m.income.salario || 0);
+      totals.bonus += Number(m.income.bonus || 0);
+      totals.outros += Number(m.income.outros || 0);
+    });
+    return [
+      { name: 'Salário', value: totals.salario, color: '#10b981' },
+      { name: 'Bônus', value: totals.bonus, color: '#3b82f6' },
+      { name: 'Outros', value: totals.outros, color: '#6366f1' }
+    ];
+  }, [data.months]);
 
   return (
     <div className="min-h-screen transition-colors duration-200 dark:bg-slate-900 bg-slate-50 flex flex-col">
@@ -521,6 +648,44 @@ export default function App() {
                       </BarChart>
                     </ResponsiveContainer>
                   )}
+                </Card>
+
+                <Card title="Gastos Anuais por Fonte" className="h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={annualExpensesData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
+                      <XAxis dataKey="name" stroke={isDarkMode ? '#94a3b8' : '#64748b'} />
+                      <YAxis stroke={isDarkMode ? '#94a3b8' : '#64748b'} />
+                      <Tooltip 
+                        formatter={(value: number) => formatCurrency(value)}
+                        contentStyle={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: 'none' }} 
+                      />
+                      <Bar dataKey="value" name="Total Anual" radius={[6,6,0,0]}>
+                        {annualExpensesData.map((entry, index) => (
+                          <Cell key={`cell-exp-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Card>
+
+                <Card title="Ganhos Anuais por Fonte" className="h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={annualIncomeData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
+                      <XAxis dataKey="name" stroke={isDarkMode ? '#94a3b8' : '#64748b'} />
+                      <YAxis stroke={isDarkMode ? '#94a3b8' : '#64748b'} />
+                      <Tooltip 
+                        formatter={(value: number) => formatCurrency(value)}
+                        contentStyle={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: 'none' }} 
+                      />
+                      <Bar dataKey="value" name="Total Anual" radius={[6,6,0,0]}>
+                        {annualIncomeData.map((entry, index) => (
+                          <Cell key={`cell-inc-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </Card>
               </div>
             </div>
