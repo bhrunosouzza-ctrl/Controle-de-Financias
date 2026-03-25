@@ -334,6 +334,31 @@ export default function App() {
 
     currentY = (doc as any).lastAutoTable.finalY + 15;
 
+    // Seção 6: Detalhamento de Empréstimos
+    if (currentY > 240) { doc.addPage(); currentY = 20; }
+    doc.setFontSize(16);
+    doc.text('6. Detalhamento de Empréstimos', 15, currentY);
+    currentY += 10;
+
+    const loansBody = data.loans.map(l => [
+      l.description,
+      formatCurrency(l.totalValue),
+      formatCurrency(l.installmentValue),
+      `${l.paidInstallments}/${l.installments}`,
+      l.startMonth || '-',
+      l.endMonth || '-'
+    ]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Descrição', 'Valor Total', 'Parcela', 'Progresso', 'Início', 'Fim']],
+      body: loansBody,
+      theme: 'striped',
+      headStyles: { fillColor: [14, 165, 233] }
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 15;
+
     // Rodapé em todas as páginas
     const totalPages = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
@@ -821,7 +846,7 @@ export default function App() {
 
           {activeTab === 'loans' && (
             <Card title="Empréstimos Ativos">
-              <div className="mb-4"><button onClick={() => setData(prev => ({...prev, loans: [...prev.loans, { id: Math.random().toString(36).substr(2,9), description: "Novo Empréstimo", totalValue: 0, installments: 1, paidInstallments: 0, installmentValue: 0, interestMonthly: 0 }]}))} className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer hover:bg-primary-600 transition-all shadow-md"><Plus className="w-4 h-4" /> Novo Empréstimo</button></div>
+              <div className="mb-4"><button onClick={() => setData(prev => ({...prev, loans: [...prev.loans, { id: Math.random().toString(36).substr(2,9), description: "Novo Empréstimo", totalValue: 0, installments: 1, paidInstallments: 0, installmentValue: 0, interestMonthly: 0, startMonth: MONTHS_BR[new Date().getMonth()], endMonth: MONTHS_BR[new Date().getMonth()] }]}))} className="bg-primary-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer hover:bg-primary-600 transition-all shadow-md"><Plus className="w-4 h-4" /> Novo Empréstimo</button></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {data.loans.map(loan => (
                   <div key={loan.id} className="p-5 border dark:border-slate-700 rounded-2xl space-y-4 relative group bg-white dark:bg-slate-800 shadow-sm">
@@ -832,6 +857,26 @@ export default function App() {
                       <div className="space-y-1"><label className="text-slate-400 uppercase font-semibold tracking-tighter">Valor Parcela</label><input type="number" step="any" value={loan.installmentValue === 0 ? "" : loan.installmentValue} onChange={(e) => setData(prev => ({...prev, loans: prev.loans.map(l => l.id === loan.id ? {...l, installmentValue: parseFloat(e.target.value) || 0} : l)}))} className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl dark:text-white border dark:border-slate-700 outline-none focus:ring-1" /></div>
                       <div className="space-y-1"><label className="text-slate-400 uppercase font-semibold tracking-tighter">Total Parcelas</label><input type="number" value={loan.installments === 0 ? "" : loan.installments} onChange={(e) => setData(prev => ({...prev, loans: prev.loans.map(l => l.id === loan.id ? {...l, installments: parseInt(e.target.value) || 0} : l)}))} className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl dark:text-white border dark:border-slate-700 outline-none focus:ring-1" /></div>
                       <div className="space-y-1"><label className="text-slate-400 uppercase font-semibold tracking-tighter">Pagas</label><input type="number" value={loan.paidInstallments === 0 ? "" : loan.paidInstallments} onChange={(e) => setData(prev => ({...prev, loans: prev.loans.map(l => l.id === loan.id ? {...l, paidInstallments: parseInt(e.target.value) || 0} : l)}))} className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl dark:text-white border dark:border-slate-700 outline-none focus:ring-1" /></div>
+                      <div className="space-y-1">
+                        <label className="text-slate-400 uppercase font-semibold tracking-tighter">Mês Início</label>
+                        <select 
+                          value={loan.startMonth || MONTHS_BR[0]} 
+                          onChange={(e) => setData(prev => ({...prev, loans: prev.loans.map(l => l.id === loan.id ? {...l, startMonth: e.target.value} : l)}))}
+                          className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl dark:text-white border dark:border-slate-700 outline-none focus:ring-1"
+                        >
+                          {MONTHS_BR.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-slate-400 uppercase font-semibold tracking-tighter">Mês Fim</label>
+                        <select 
+                          value={loan.endMonth || MONTHS_BR[0]} 
+                          onChange={(e) => setData(prev => ({...prev, loans: prev.loans.map(l => l.id === loan.id ? {...l, endMonth: e.target.value} : l)}))}
+                          className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl dark:text-white border dark:border-slate-700 outline-none focus:ring-1"
+                        >
+                          {MONTHS_BR.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 ))}

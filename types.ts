@@ -42,6 +42,8 @@ export interface Loan {
   paidInstallments: number;
   installmentValue: number;
   interestMonthly: number;
+  startMonth: string;
+  endMonth: string;
 }
 
 export interface TripExpense {
